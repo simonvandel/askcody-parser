@@ -1,6 +1,11 @@
 'use strict';
 
 var request = require('request');
+var proj4 = require('proj4');
+
+var fromProj = proj4.defs('EPSG:3857');
+var toProj = proj4.defs('WGS84');
+
 request('https://way.onaskcody.com/data/routes/VrB7OV-9D0jz9', function (error, response, body) {
   if (!error && response.statusCode == 200) {
     var json = JSON.parse(response.body);
@@ -10,16 +15,60 @@ request('https://way.onaskcody.com/data/routes/VrB7OV-9D0jz9', function (error, 
         name: marker.name,
         local_coords: marker.coords
       };
+    }).filter(function (marker) {
+      return marker.name.indexOf("SCENE") > -1 || marker.name.indexOf("TELT") > -1;
     }).map(function (marker) {
       return {
         name: marker.name,
         coords: local2Global(marker.local_coords)
       };
-    }).map(markerToGeoJson);
+    }).map(markerToGeoJson).map(colorizeMarkers);
     var result = makeCompleteGeoJson(markersDone);
     console.log(JSON.stringify(result));
   }
 });
+
+var roadColor = "#ff00ff";
+var busColor = "#f17f83";
+var stageColor = "#ffffff";
+
+function colorizeMarkers(marker) {
+  colorWhenContains(marker, "#ff0000", "toilet ");
+  colorWhenContains(marker, "#ffff00", "hotelt ");
+  colorWhenContains(marker, roadColor, "adelgade");
+  colorWhenContains(marker, roadColor, "birkevej");
+  colorWhenContains(marker, roadColor, "e45");
+  colorWhenContains(marker, roadColor, "horsensvej");
+  colorWhenContains(marker, roadColor, "møllegade");
+  colorWhenContains(marker, roadColor, "vrold vej");
+  colorWhenContains(marker, roadColor, "vrold tværvej");
+  colorWhenContains(marker, roadColor, "vestergade");
+  colorWhenContains(marker, busColor, "bus");
+  colorWhenContains(marker, busColor, "stop");
+  colorWhenContainsSensitive(marker, "#000000", "DK");
+  colorWhenContainsSensitive(marker, stageColor, "SCENE");
+  colorWhenContainsSensitive(marker, stageColor, "TELT");
+
+  return marker;
+}
+
+function colorWhenContainsSensitive(marker, color, substring) {
+  if (marker.properties.title.indexOf(substring) > -1) {
+    marker.properties["marker-color"] = color;
+  }
+  return marker;
+}
+
+function colorWhenContains(marker, color, substring) {
+  if (marker.properties.title.toLowerCase().indexOf(substring) > -1) {
+    marker.properties["marker-color"] = color;
+  }
+  return marker;
+}
+
+// Stage
+// Toilet
+// Rest
 
 function makeCompleteGeoJson(markers) {
   return {
@@ -45,9 +94,7 @@ function markerToGeoJson(marker) {
 }
 
 function local2Global(localCoords) {
-  var x = localCoords[0] / 111319.7211;
-  var y = localCoords[1] / 134999.2400560;
-  return [x, y];
+  return proj4(fromProj, toProj, localCoords);
 }
 
 /*
